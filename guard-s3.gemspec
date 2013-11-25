@@ -4,7 +4,7 @@ require 'guard/s3/version'
 
 Gem::Specification.new do |s|
   s.name        = "guard-s3"
-  s.version     = Guard::S3::VERSION
+  s.version     = Guard::S3Version::VERSION
   s.platform    = Gem::Platform::RUBY
   s.authors     = ["James Welsh", "Austin Mullins"]
   s.email       = ["james at supermatter dot com", "Austin dot Mullins at WalkeDesigns dot com"]
@@ -20,6 +20,6 @@ Gem::Specification.new do |s|
   s.executables   = `git ls-files -- bin/*`.split("\n").map{ |f| File.basename(f) }
   s.require_paths = ["lib"]
 
-  s.add_dependency 'aws-s3'
-  s.add_dependency 'guard'
+  s.add_dependency 'aws-sdk', '~> 1.0'
+  s.add_dependency 'guard', '~> 2.0'
 end
