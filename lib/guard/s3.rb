@@ -1,39 +1,39 @@
-begin
-  require 'aws/s3'
-rescue LoadError => e
-  e.message << " (You may need to install the aws-s3 gem)"
-  raise e
-end unless defined?(AWS::S3)
-
 require 'guard'
-require 'guard/guard'
+require 'guard/plugin'
+require 'aws/s3'
 
-module ::Guard
-  class S3 < Guard
-    include AWS::S3
-    attr_reader :s3_connection, :pwd
+module Guard
+  class S3 < Plugin
 
-    def initialize(watchers = [], options = {})
+    def initialize(options = {})
       super
-      @s3_connection = Base.establish_connection!(
+      @s3 = AWS::S3.new(
         :access_key_id  => options[:access_key_id],
         :secret_access_key => options[:secret_access_key]
       )
-      @bucket         = options[:bucket]
+      @bucket         = @s3.buckets[options[:bucket]]
       @s3_permissions = options[:s3_permissions]
       @debug          = true
-      @watchdir       = (Dsl.options[:watchdir] && File.expand_path(Dsl.options[:watchdir])) || Dir.pwd
+      @watchdir       = options[:watchdir] || Dir.pwd
+      @prefix         = options[:prefix]
     end
-        
-    def run_on_change(paths)
+
+    def run_on_changes(paths)
       paths.each do |path|
-        file  = File.join(@watchdir, path)        
+        file = File.join(@watchdir, path)
+        dest_path = File.join(@prefix, path)
+        dest_key = @bucket.objects[dest_path]
         begin
-          if exists?(file)
-            log "Nothing uploaded. #{file} already exists!"
+          if dest_key.exists?
+            if etag_match?(file, dest_path)
+              log "Unchanged: #{dest_path}"
+            else
+              log "Updating: #{dest_path}"
+              dest_key.write(:file => file, :acl => @s3_permissions)
+            end
           else
-            log "Uploading #{path}"
-            S3Object.store(path, open(file), @bucket, {:access => @s3_permissions}) 
+            log "Creating: #{dest_path}"
+            dest_key.write(:file => file, :acl => @s3_permissions)
           end
         rescue Exception => e
           log e.message
@@ -41,8 +41,8 @@ module ::Guard
       end
     end
     
-    def exists?(filename)
-      filename.nil? ? false : AWS::S3::S3Object.exists?(filename, @bucket)
+    def etag_match?(path, key)
+      Digest::MD5.hexdigest(File.read(path)) == @bucket.objects[key].etag.gsub('"','')
     end
 
     private

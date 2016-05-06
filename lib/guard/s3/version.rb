@@ -1,5 +1,5 @@
 module Guard
-  module S3
-    VERSION = "0.1.2"
+  class S3Version
+    VERSION = "0.1.3"
   end
 end
