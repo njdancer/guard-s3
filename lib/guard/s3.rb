@@ -22,6 +22,9 @@ module Guard
       paths.each do |path|
         file = File.join(@watchdir, path)
         dest_path = File.join(@prefix, path)
+        if dest_path[0] == '/'
+          dest_path[0] = ''
+        end
         dest_key = @bucket.objects[dest_path]
         begin
           if dest_key.exists?
