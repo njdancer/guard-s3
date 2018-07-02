@@ -18,34 +18,65 @@ module Guard
       @prefix         = options[:prefix]
     end
 
-    def run_on_changes(paths)
+    def run_on_additions(paths)
       paths.each do |path|
-        file = File.join(@watchdir, path)
-        dest_path = File.join(@prefix, path)
-        if dest_path[0] == '/'
-          dest_path[0] = ''
-        end
-        dest_key = @bucket.objects[dest_path]
+        file = resolve_file path
+        object = resolve_object path
         begin
-          if dest_key.exists?
-            if etag_match?(file, dest_path)
-              log "Unchanged: #{dest_path}"
-            else
-              log "Updating: #{dest_path}"
-              dest_key.write(:file => file, :acl => @s3_permissions)
-            end
+          if object.exists?
+            out_of_sync
           else
-            log "Creating: #{dest_path}"
-            dest_key.write(:file => file, :acl => @s3_permissions)
+            log "Creating: #{object.key}"
+            object.write(:file => file, :acl => @s3_permissions)
           end
         rescue Exception => e
           log e.message
         end
       end
     end
-    
-    def etag_match?(path, key)
-      Digest::MD5.hexdigest(File.read(path)) == @bucket.objects[key].etag.gsub('"','')
+
+    def run_on_modifications(paths)
+      paths.each do |path|
+        file = resolve_file path
+        object = resolve_object path
+        begin
+          if object.exists?
+            if etag_match?(file, object)
+              log "Unchanged: #{object.key}"
+              # FIXME: update mtime
+            else
+              log "Updating: #{object.key}"
+              object.write(:file => file, :acl => @s3_permissions)
+            end
+          else
+            out_of_sync
+          end
+        rescue Exception => e
+          log e.message
+        end
+      end
+    end
+
+    def run_on_removals(paths)
+      paths.each do |path|
+        file = resolve_file path
+        object = resolve_object path
+        begin
+          if object.exists?
+            log "Removing: #{object.key}"
+            object.delete
+          else
+            out_of_sync
+          end
+        rescue Exception => e
+          log e.message
+        end
+      end
+    end
+
+    def etag_match?(path, object)
+      object = @bucket.objects[object] unless object.is_a? AWS::S3::S3Object
+      Digest::MD5.hexdigest(File.read(path)) == object.etag.gsub('"','')
     end
 
     private
@@ -59,5 +90,26 @@ module Guard
       puts "[#{Time.now}] #{msg}"
     end
 
+    def resolve_file(path)
+      File.join(@watchdir, path)
+    end
+
+    def resolve_object(path)
+      dest_path = File.join(@prefix, path)
+      if dest_path[0] == '/'
+        dest_path[0] = ''
+      end
+      @bucket.objects[dest_path]
+    end
+
+    def out_of_sync
+      log "Out of sync, forcing full sync."
+      sync
+    end
+
+    def sync
+      # FIXME: run a full sync
+      log "Sync not yet implemented. You will need to manually sync this folder form S3."
+    end
   end
 end
