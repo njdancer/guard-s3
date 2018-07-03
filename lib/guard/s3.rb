@@ -1,6 +1,7 @@
 require 'guard'
 require 'guard/plugin'
 require 'aws/s3'
+require 'guard/s3/sync-agent'
 
 module Guard
   class S3 < Plugin
@@ -23,9 +24,7 @@ module Guard
         file = resolve_file path
         object = resolve_object path
         begin
-          if object.exists?
-            out_of_sync
-          else
+          unless object.exists? && etag_match?(file, object)
             log "Creating: #{object.key}"
             object.write(:file => file, :acl => @s3_permissions)
           end
@@ -40,16 +39,9 @@ module Guard
         file = resolve_file path
         object = resolve_object path
         begin
-          if object.exists?
-            if etag_match?(file, object)
-              log "Unchanged: #{object.key}"
-              # FIXME: update mtime
-            else
-              log "Updating: #{object.key}"
-              object.write(:file => file, :acl => @s3_permissions)
-            end
-          else
-            out_of_sync
+          unless object.exists? && etag_match?(file, object)
+            log "Updating: #{object.key}"
+            object.write(:file => file, :acl => @s3_permissions)
           end
         rescue Exception => e
           log e.message
@@ -65,13 +57,15 @@ module Guard
           if object.exists?
             log "Removing: #{object.key}"
             object.delete
-          else
-            out_of_sync
           end
         rescue Exception => e
           log e.message
         end
       end
+    end
+
+    def run_all
+      sync
     end
 
     def etag_match?(path, object)
@@ -102,14 +96,18 @@ module Guard
       @bucket.objects[dest_path]
     end
 
-    def out_of_sync
-      log "Out of sync, forcing full sync."
-      sync
-    end
-
     def sync
-      # FIXME: run a full sync
-      log "Sync not yet implemented. You will need to manually sync this folder form S3."
+      agent = SyncAgent.new(
+        :bucket         => @bucket,
+        :debug          => @debug,
+        :prefix         => @prefix,
+        :s3             => @s3,
+        :s3_permissions => @s3_permissions,
+        :watchdir       => @watchdir,
+        :watchers       => @watchers
+      )
+
+      agent.sync
     end
   end
 end
